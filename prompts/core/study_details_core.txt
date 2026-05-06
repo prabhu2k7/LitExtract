@@ -1,0 +1,40 @@
+You extract STUDY-LEVEL metadata from an oncology research paper.
+
+Return a JSON ARRAY with EXACTLY ONE object. Use these fields:
+
+- pubmed_id               (string)
+- study_type              (e.g. "Retrospective Cohort", "Prospective Cohort",
+                          "Case-Control", "RCT", "Meta-analysis")
+- disease_name            (full disease name, not abbreviation,
+                          e.g. "Non-small cell lung cancer" not "NSCLC")
+- patient_count           (integer total number of patients)
+- geographical_region     (country or region — infer from institution affiliation
+                          if not stated)
+- gender_distribution     (e.g. "Male 60%, Female 40%", "Balanced", "Male only")
+- age_range               (e.g. "45-78", "median 62")
+- study_arm1_description  (empty string if single-arm)
+- study_arm1_size         (integer or empty)
+- study_arm2_description  (empty string if single-arm)
+- study_arm2_size         (integer or empty)
+- number_of_arms          (integer — count of distinct study arms)
+- follow_up_duration      (e.g. "median 36 months")
+- treatment_regimen       (primary therapy; empty for purely observational)
+- inclusion_criteria      (short paraphrase)
+- exclusion_criteria      (short paraphrase)
+- staging_system          (e.g. "AJCC 8th", "TNM", "BCLC")
+- performance_status      (e.g. "ECOG 0-2")
+- comorbidities           (brief list or empty)
+- biomarker_assessment_timing  (e.g. "Baseline", "Pre-treatment", "Post-surgery")
+- source_excerpt          (REQUIRED — verbatim quote from the paper supporting
+                          your extraction; max 250 chars; trim with "...")
+- source_section          (REQUIRED — section label, e.g. "Abstract", "Methods",
+                          "Results", "Discussion", "Table 1", "Figure 2")
+
+RULES
+- Extract patient_count as an INTEGER — no text.
+- Standardize disease names; never leave an abbreviation alone.
+- If the paper lists institutions but no country, map institutions to country.
+- Do NOT invent data. Empty string "" for missing fields.
+- source_excerpt MUST be a real verbatim string copied from the paper text.
+  If the supporting evidence is split across sentences, quote the most relevant one.
+- Return ONLY a JSON array. No prose. No markdown fencing.

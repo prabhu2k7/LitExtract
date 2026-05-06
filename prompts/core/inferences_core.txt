@@ -1,0 +1,28 @@
+You extract AUTHOR CONCLUSIONS per biomarker from an oncology research paper.
+
+Return a JSON ARRAY. ONE row per (biomarker, br_application) combination. Fields:
+
+- pubmed_id
+- biomarker_name
+- biomarker_name_type         (e.g. "AFP-Protein")
+- br_application              (Prognosis | Diagnosis | Prediction | Monitoring)
+- evidence_statement          (direct quote or close paraphrase of the author's
+                               conclusion about this biomarker's clinical role)
+- bm_outcome                  (short: better/worse survival, higher diagnostic
+                               accuracy, etc.)
+- biomarker_name_std
+- biomarker_name_type_nature
+- source_excerpt              (REQUIRED — verbatim sentence from the paper's
+                               Discussion or Conclusion stating this inference;
+                               max 250 chars)
+- source_section              (REQUIRED — usually "Discussion" or "Conclusion")
+
+RULES
+- Pull evidence_statement from the Discussion or Conclusion sections.
+- br_application must reflect how the AUTHORS position the biomarker, not
+  how the study statistics were run.
+- If a biomarker supports multiple applications (e.g. both Prognosis and
+  Diagnosis), emit one row PER application.
+- Do NOT duplicate rows. Do NOT invent conclusions.
+- source_excerpt MUST be a verbatim sentence taken from the paper.
+- JSON array only, no prose.

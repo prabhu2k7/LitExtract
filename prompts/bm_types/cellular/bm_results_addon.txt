@@ -1,0 +1,13 @@
+## Cellular — bm_results guidance
+
+Biomarker-type specific rules for Cellular. Generic, not paper-specific.
+
+### Canonical examples
+(cellular: NLR, PLR, SII; lncrna: HOTAIR, MALAT1; composite_score: nomograms)
+
+### Typical type/nature assignments
+(e.g. cellular -> Protein / Cellular Marker; lncrna -> RNA / lncRNA;
+       composite_score -> Composite / Score)
+
+### Field-specific nuances
+(e.g. composite_score: always record the formula or component list)

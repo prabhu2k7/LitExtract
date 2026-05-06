@@ -1,0 +1,56 @@
+# Mirror .gitignore plus everything Docker doesn't need at build time
+
+.git
+.github
+.gitignore
+.gitattributes
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Local Claude
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node / built artifacts (Docker will rebuild)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+node_modules/
+
+# Runtime data
+db/*.db
+db/*.db-journal
+input/*.pdf
+input/*.xlsx
+biomarker-cl-out.xlsx
+goldset_*.xlsx
+.rag_cache/
+docintel_process/input/*.pdf
+docintel_process/_download_tmp/
+docintel_process/logs/
+
+# Docs not needed in image
+docs/
+skills/
+*.md
+!README.md
+!SECURITY.md
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

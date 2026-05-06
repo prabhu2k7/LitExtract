@@ -1,0 +1,12 @@
+## Longitudinal Clinical — bm_results guidance
+
+Study-type specific rules for Longitudinal Clinical. Generic, not paper-specific.
+
+### Expected outcomes / endpoints
+(e.g. OS, DFS, PFS for survival_oncology; AUC/sensitivity for diagnostic)
+
+### Typical statistical tests
+(e.g. Kaplan-Meier + Cox for survival_oncology; ROC curves for diagnostic)
+
+### Field-specific nuances
+(e.g. methylation: always record CpG site IDs in evidence_statement)

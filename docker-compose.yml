@@ -1,0 +1,35 @@
+# Docker Compose for LOCAL self-hosting.
+# `docker compose up` from the repo root, then visit http://localhost:7860.
+#
+# The image is the same one pushed to Hugging Face Spaces — single source of
+# truth. Differences from a HF deploy:
+#   - We mount ./db, ./input as bind volumes so SQLite + uploaded PDFs persist
+#     across container restarts (HF Spaces free tier wipes these).
+#   - You can drop your OPENAI_API_KEY into .env if you want server-default
+#     mode instead of BYOK; otherwise users provide their key in the UI.
+
+services:
+  litextract:
+    build: .
+    image: litextract:local
+    container_name: litextract
+    ports:
+      - "7860:7860"
+    environment:
+      # Empty OPENAI_API_KEY = enforce BYOK in the UI.
+      # Set this to a real key if you want a server-default fallback.
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      LLM_PROVIDER: "${LLM_PROVIDER:-openai}"
+      OPENAI_COMPLETION_MODEL: "${OPENAI_COMPLETION_MODEL:-gpt-4o-mini}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:7860,http://127.0.0.1:7860}"
+      PORT: "7860"
+    volumes:
+      # Persist SQLite + uploaded PDFs on the host so restarts don't wipe data.
+      - ./db:/app/db
+      - ./input:/app/input
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7860/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

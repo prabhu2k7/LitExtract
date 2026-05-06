@@ -1,0 +1,71 @@
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+
+# Local Claude config
+.claude/settings.local.json
+.claude/projects/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+.parcel-cache/
+.next/
+
+# Application data — user-specific, never committed
+db/*.db
+db/*.db-journal
+db/*.db-wal
+db/*.db-shm
+input/*.pdf
+input/*.xlsx
+biomarker-cl-out.xlsx
+goldset_*.xlsx
+.rag_cache/
+docintel_process/input/*.pdf
+docintel_process/_download_tmp/
+docintel_process/logs/
+docintel_process/processed.json
+docintel_process/pipeline_status.json
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+*.tmp
+.tmp/
+
+# Misc Excel backup patterns
+*.xlsx.bak
+*_backup*.xlsx

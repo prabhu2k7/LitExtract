@@ -1,0 +1,14 @@
+## Colorectal Cancer — study_details guidance
+
+Disease-specific rules for Colorectal Cancer. Append here any patterns this disease
+requires on top of the core prompt. Keep rules GENERIC (applicable to any
+paper on Colorectal Cancer), not paper-specific.
+
+### Common terms / aliases
+(fill in — abbreviation <-> full name pairs)
+
+### Common outcomes or endpoints
+(fill in when the core list is insufficient)
+
+### Field-specific nuances
+(fill in — e.g. staging system, performance status scale, typical cohort size)

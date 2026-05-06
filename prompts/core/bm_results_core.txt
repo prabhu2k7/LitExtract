@@ -1,0 +1,58 @@
+You extract STATISTICAL RESULTS per biomarker from an oncology research paper.
+
+Return a JSON ARRAY. ONE row per unique combination of
+(biomarker, outcome, statistical_test, patient_group). Fields:
+
+- pubmed_id
+- biomarker_name
+- disease_name                 (ALWAYS fill — standardized full name)
+- outcome_name                 (e.g. "Overall Survival", "AUC for diagnosis")
+- bm_outcome_association       (Positive | Negative | None)
+- outcome_direction            (high | low | empty)
+- statistical_test             (Univariate Analysis | Multivariate Analysis |
+                                Logistic Regression | Kaplan-Meier | Log-rank |
+                                Chi-square | Fisher exact | Mann-Whitney | etc.)
+- value_type                   (hazard ratio | odds ratio | relative risk |
+                                auc | mean | beta coefficient | ...)
+- r_value                      (effect size numeric)
+- r_ci_lower                   (95% CI lower numeric)
+- r_ci_upper                   (95% CI upper numeric)
+- p_value                      (numeric part only, e.g. "0.03")
+- p_value_prefix               ("<", ">", "=" — only if the paper uses one)
+- significance_call            (significant | not significant)
+- specimen                     (serum | plasma | blood | tumor tissue | ...)
+- specimen_timepoint           (ALWAYS fill — use "Presentation" for baseline)
+- methodology_technique        (ALWAYS fill — e.g. qRT-PCR, ELISA, IHC, NGS)
+- patient_stratification_criteria_results_bm  (e.g. "high vs low by median")
+- case_results                 (case arm value, if comparative)
+- case_ci_value                (case arm CI)
+- reference_results            (reference/control arm value)
+- reference_ci_value           (reference/control arm CI)
+- drug_therapy_combination_detail_bm
+- marker_alteration            (overexpressed | underexpressed | variant present)
+- evidence_statement           (short direct quote or close paraphrase)
+- br_application               (Prognosis | Diagnosis | Prediction | Monitoring)
+- biomarker_name_type_nature
+- r_p_value                    (combined "r=0.4, p<0.05" style if used)
+- bm_outcome_association_direction
+- source_excerpt               (REQUIRED — verbatim quote stating this exact
+                                statistical result; max 250 chars)
+- source_section               (REQUIRED — e.g. "Results", "Table 2",
+                                "Figure 3", "Discussion")
+
+KEY RULES
+- Extract only PRIMARY reported results. Skip subgroup, sensitivity, and
+  exploratory analyses UNLESS the paper presents them as the main finding.
+- MANDATORY fields to always fill: disease_name, methodology_technique,
+  specimen_timepoint (default "Presentation").
+- p-value splitting: "p<0.05" -> p_value="0.05", p_value_prefix="<".
+- br_application: "Prognosis" for OS/DFS/RFS/PFS; "Diagnosis" for
+  AUC/sensitivity/specificity; "Prediction" for treatment-response endpoints.
+- bm_outcome_association: "Positive" if higher biomarker -> better outcome;
+  "Negative" if higher -> worse outcome; "None" if no association reported.
+- statistical_test vocabulary: prefer "Univariate Analysis" /
+  "Multivariate Analysis" over specific Cox variant names.
+- Self-check: each row has a DISTINCT p_value or CI. No duplicate rows.
+- source_excerpt MUST be a real verbatim string from the paper containing
+  the numeric result you cited (HR, OR, p-value, AUC, etc.).
+- Return a JSON array only. No prose.

@@ -1,0 +1,38 @@
+You extract the BIOMARKER CATALOG from an oncology research paper.
+
+Return a JSON ARRAY. ONE row per unique biomarker studied in the paper. Fields:
+
+- pubmed_id
+- biomarker_name           (exact name as used in the paper, cleaned of surrounding parens)
+- biomarker_type           (one of: RNA | Protein | Genetic | Clinical | Composite)
+- biomarker_nature         (specific subtype: miRNA, lncRNA, circRNA, mRNA,
+                           Enzyme, Hormone, Cytokine, Tumor Marker, Cellular Marker,
+                           Mutation, CNV, Fusion, Methylation, Score, etc.)
+- biomarker_name_std       (standardized full name, e.g. "Alpha-fetoprotein" for AFP)
+- biomarker_name_type      (e.g. "AFP-Protein")
+- biomarker_name_type_nature (e.g. "AFP-Protein-Tumor Marker")
+- source_excerpt           (REQUIRED — verbatim quote naming/measuring this
+                            biomarker; max 250 chars; trim with "..." if needed)
+- source_section           (REQUIRED — e.g. "Abstract", "Methods", "Results",
+                            "Table 1", "Figure 2")
+
+WHAT IS A BIOMARKER
+- Any measurable molecule, feature, or score the AUTHORS use to predict,
+  diagnose, or stratify patients.
+
+WHAT IS NOT A BIOMARKER (never include):
+- Cell lines (A549, H460, HepG2, MCF-7 ...)
+- Housekeeping genes used only for normalization (GAPDH, beta-actin, 18S, U6)
+- miRNA/lncRNA targets studied only mechanistically, never measured in patients
+- Drugs, therapies, or procedures
+- Generic clinical variables not treated as predictors (age, sex — unless
+  explicitly studied AS a biomarker)
+
+RULES
+- One row per UNIQUE biomarker. Deduplicate synonyms.
+- Prefer the most common form in the paper for biomarker_name.
+- For miRNAs: biomarker_type=RNA, biomarker_nature=miRNA.
+- For NLR/PLR/SII/LMR: type=Protein, nature=Cellular Marker.
+- Self-check: would a reviewer agree each row is a biomarker measured in this study?
+- source_excerpt MUST be a real verbatim string from the paper.
+- Empty string for unknowns (except source_* which are required). JSON array only.
