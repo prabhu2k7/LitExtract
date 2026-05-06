@@ -54,6 +54,10 @@ from api.security import (  # noqa: E402
 # Install log redaction as soon as possible — before any request fires.
 install_log_redaction()
 
+# Initialise the SQLite schema at startup so read-only endpoints (history,
+# biomarkers) work even before the first upload triggers pipeline init.
+_initdb.init_db()
+
 
 # ---- App ----
 app = FastAPI(title="LitExtract API", version="0.1.0")
