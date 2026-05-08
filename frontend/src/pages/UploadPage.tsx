@@ -152,7 +152,7 @@ export default function UploadPage() {
       setQueue((q) => [...q, ...next]);
       batchToastedRef.current = false;
       const opts = { forceRerun, trainingMode };
-      for (const it of next) runItem(it.localId, it.file, opts);
+      for (const it of next) runItem(it.localId, it.file!, opts);
     },
     [forceRerun, trainingMode, runItem]
   );
@@ -264,7 +264,7 @@ export default function UploadPage() {
     setQueue((q) => [...q, ...next]);
     batchToastedRef.current = false;
     const opts = { forceRerun, trainingMode };
-    for (const it of next) runItem(it.localId, it.file, opts);
+    for (const it of next) runItem(it.localId, it.file!, opts);
   }, [pendingFiles, forceRerun, trainingMode, runItem]);
 
   // Toast once when ALL queue items have settled
