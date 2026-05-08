@@ -25,3 +25,8 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 slowapi>=0.1.9
+
+# Postgres support — used when DATABASE_URL is set (production / HF Space).
+# Local dev defaults to SQLite (no DATABASE_URL) so this is optional at install
+# time but required for the dual-driver code path.
+psycopg2-binary>=2.9.9

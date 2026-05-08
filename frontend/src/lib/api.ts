@@ -2,7 +2,13 @@
 
 import { authHeaders } from "./apiKey";
 
-export type JobState = "queued" | "processing" | "complete" | "failed";
+export type JobState =
+  | "queued"
+  | "processing"
+  | "complete"
+  | "failed"
+  | "cancelling"
+  | "cancelled";
 
 export interface DuplicateRef {
   upload_id: string;
@@ -86,8 +92,12 @@ export interface EtaResponse {
   avg_duration_ms: number | null;
   min_duration_ms?: number;
   max_duration_ms?: number;
+  avg_cost_usd: number | null;
+  min_cost_usd?: number | null;
+  max_cost_usd?: number | null;
   samples: number;
   window: number;
+  model: string;
 }
 
 export type SheetName = "Study_Details" | "BM_Details" | "BM_Results" | "Inferences";
@@ -175,6 +185,21 @@ export async function uploadPdf(
     headers: { ...authHeaders() },
   });
   return jsonOrThrow<UploadResponse>(res);
+}
+
+export interface CancelResponse {
+  paper_id: string;
+  state: string;
+  cancelled: boolean;
+  reason: string;
+}
+
+export async function cancelUpload(displayId: string): Promise<CancelResponse> {
+  const res = await fetch(
+    `/api/upload/${encodeURIComponent(displayId)}/cancel`,
+    { method: "POST" }
+  );
+  return jsonOrThrow<CancelResponse>(res);
 }
 
 // ---- API-key validation -----------------------------------------------
@@ -295,4 +320,143 @@ export interface BiomarkersResponse {
 export async function getBiomarkers(): Promise<BiomarkersResponse> {
   const res = await fetch("/api/biomarkers");
   return jsonOrThrow<BiomarkersResponse>(res);
+}
+
+// ---- Validation / benchmark page ---------------------------------------
+
+export interface ValidationAggregate {
+  papers_total: number;
+  papers_scored: number;
+  papers_at_100_canon: number;
+  papers_at_95_canon: number;
+  papers_at_80_canon: number;
+  median_canonical: number;
+  mean_canonical: number;
+  median_f1: number;
+  mean_f1: number;
+  max_f1: number;
+}
+
+export interface ValidationPaperRow {
+  pmid: string;
+  slot: string;
+  diseases: string;
+  genes: string;
+  pmcid: string;
+  license: string;
+  civic_evidence_count: number;
+  extracted_total: number;
+  gold_total: number;
+  canonical_recall: number | null;
+  canonical_missed: string[];
+  canonical_captured: string[];
+  f1: number | null;
+  row_recall: number | null;
+  field_precision: number | null;
+  status: "perfect" | "high" | "partial" | "miss" | "no_extraction";
+  extraction_cached: boolean;
+}
+
+export interface ValidationSummary {
+  aggregate: ValidationAggregate | null;
+  papers: ValidationPaperRow[];
+  validation_dir: string;
+  available: boolean;
+}
+
+export interface ValidationVersion {
+  version: string;
+  date: string;
+  label: string;
+  changes: string[];
+  median_canonical_recall: number | null;
+  mean_canonical_recall: number | null;
+  median_f1: number | null;
+  mean_f1: number | null;
+  papers_total: number;
+  papers_scored: number;
+  notes?: string;
+}
+
+export interface ValidationHistory {
+  versions: ValidationVersion[];
+  available: boolean;
+}
+
+export interface ValidationFlatRow {
+  sheet: string;
+  biomarker_raw: string;
+  biomarker_normalized: string;
+  disease: string;
+  therapy: string;
+  significance: string;
+  outcome: string;
+  p_value: string;
+  br_application: string;
+  source_excerpt: string;
+  source_section: string;
+}
+
+export interface CivicProfileLink {
+  molecular_profile: string;
+  civic_url: string;
+  disease: string;
+  therapies: string;
+  evidence_level: string;
+  significance: string;
+}
+
+export interface ValidationPaperDetail {
+  pmid: string;
+  pmcid: string;
+  slot: string;
+  diseases: string;
+  genes: string;
+  pubmed_url: string;
+  pmc_url: string;
+  civic_evidence_count: number;
+  civic_profiles: CivicProfileLink[];
+  gold: ValidationFlatRow[];
+  extracted: ValidationFlatRow[];
+  canonical: {
+    gold: string[];
+    ext: string[];
+    captured: string[];
+    missed: string[];
+    extras: string[];
+  };
+  scores: {
+    canonical_recall: number;
+    f1: number;
+    row_recall: number;
+    field_precision: number;
+    study_results: number;
+    bm_details: number;
+    bm_results: number;
+    inferences: number;
+  } | null;
+  extraction_cached: boolean;
+}
+
+export async function getValidationSummary(): Promise<ValidationSummary> {
+  const res = await fetch("/api/validation/summary");
+  return jsonOrThrow<ValidationSummary>(res);
+}
+
+export async function getValidationHistory(): Promise<ValidationHistory> {
+  const res = await fetch("/api/validation/history");
+  return jsonOrThrow<ValidationHistory>(res);
+}
+
+export async function getValidationPaper(pmid: string): Promise<ValidationPaperDetail> {
+  const res = await fetch(`/api/validation/paper/${encodeURIComponent(pmid)}`);
+  return jsonOrThrow<ValidationPaperDetail>(res);
+}
+
+export function validationPaperDownloadUrl(pmid: string): string {
+  return `/api/validation/paper/${encodeURIComponent(pmid)}/download`;
+}
+
+export function validationSummaryDownloadUrl(): string {
+  return "/api/validation/download";
 }

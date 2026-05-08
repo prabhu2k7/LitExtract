@@ -16,13 +16,14 @@ import os
 import sys
 import uuid
 import json
-import sqlite3
 import threading
 import hashlib
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from sqlalchemy import text
 
 # --- Make repo root importable so we can use existing modules unchanged ---
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -126,6 +127,10 @@ def _get_job(paper_id: str) -> dict[str, Any] | None:
         return dict(job) if job else None
 
 
+class _CancelledByUser(Exception):
+    """Raised by the stage callback when the user hit Cancel mid-extraction."""
+
+
 def _run_extraction(paper_id: str, upload_id: str, pdf_path: Path,
                      api_key: str) -> None:
     """Background worker. Runs the pipeline and keeps both the in-memory job
@@ -144,7 +149,15 @@ def _run_extraction(paper_id: str, upload_id: str, pdf_path: Path,
     t0 = datetime.now(timezone.utc)
 
     def stage_cb(stage_name: str) -> None:
-        """Invoked by the pipeline at every sub-stage transition."""
+        """Invoked by the pipeline at every sub-stage transition.
+
+        Also serves as the cancellation checkpoint — if the user hit Cancel
+        while a stage was in flight, the next sub-stage transition raises
+        `CancelledError`, which the outer except handles by marking the
+        upload as 'cancelled' (distinct from 'failed').
+        """
+        if _initdb.get_upload_state(upload_id) == "cancelling":
+            raise _CancelledByUser(f"cancelled at stage {stage_name}")
         _set_job(paper_id, stage=stage_name)
         _initdb.update_upload(upload_id, {"stage": stage_name})
 
@@ -199,6 +212,17 @@ def _run_extraction(paper_id: str, upload_id: str, pdf_path: Path,
             result=result,
             error=None,
         )
+    except _CancelledByUser as e:
+        completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        duration_ms = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
+        _initdb.update_upload(upload_id, {
+            "state": "cancelled",
+            "stage": "cancelled",
+            "completed_at": completed_at,
+            "duration_ms": duration_ms,
+            "error_message": str(e),
+        })
+        _set_job(paper_id, state="cancelled", stage="cancelled", error=str(e))
     except Exception as e:
         completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         duration_ms = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
@@ -224,12 +248,20 @@ def _run_extraction(paper_id: str, upload_id: str, pdf_path: Path,
 
 # ---- Routes ----
 
+_PROVIDER_LABELS = {
+    "openai":       "OpenAI",
+    "anthropic":    "Anthropic",
+    "azure-openai": "Azure OpenAI",
+}
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {
         "ok": True,
         "model": config.active_model_name(),
         "provider": config.LLM_PROVIDER,
+        "provider_label": _PROVIDER_LABELS.get(config.LLM_PROVIDER, config.LLM_PROVIDER),
         "byok_required": resolve_api_key(None) is None,
     }
 
@@ -355,29 +387,46 @@ def stages_reference() -> dict[str, Any]:
 
 @app.get("/api/eta")
 def eta(window: int = 10) -> dict[str, Any]:
-    """Rolling-average duration_ms across the most recent `window` complete
-    uploads. Used by the UI to render an ETA. Returns nulls when no history."""
-    if not config.DB_PATH.exists():
-        return {"avg_duration_ms": None, "samples": 0, "window": window}
-    with _connect() as conn:
-        rows = conn.execute(
-            """SELECT duration_ms FROM uploads
-               WHERE state = 'complete'
-                 AND duration_ms IS NOT NULL
-                 AND duration_ms > 0
-                 AND deleted_at IS NULL
-               ORDER BY uploaded_at DESC LIMIT ?""",
-            (window,),
-        ).fetchall()
+    """Rolling-average duration AND cost across the most recent `window`
+    complete uploads. Used by the UI to render time + cost estimates.
+
+    Returns nulls when no history; the UI then falls back to a static
+    "30-90 seconds typical" copy and no cost estimate.
+    """
+    sql = text("""
+        SELECT duration_ms, cost_usd, model FROM uploads
+        WHERE state = 'complete'
+          AND duration_ms IS NOT NULL
+          AND duration_ms > 0
+          AND skip_reason IS NULL
+          AND deleted_at IS NULL
+        ORDER BY uploaded_at DESC LIMIT :win
+    """)
+    try:
+        with _initdb.get_engine().connect() as conn:
+            rows = conn.execute(sql, {"win": window}).mappings().all()
+    except Exception:
+        rows = []
     durs = [r["duration_ms"] for r in rows if r["duration_ms"]]
+    costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
     if not durs:
-        return {"avg_duration_ms": None, "samples": 0, "window": window}
+        return {
+            "avg_duration_ms": None,
+            "avg_cost_usd": None,
+            "samples": 0,
+            "window": window,
+            "model": config.active_model_name(),
+        }
     return {
         "avg_duration_ms": int(sum(durs) / len(durs)),
         "min_duration_ms": min(durs),
         "max_duration_ms": max(durs),
+        "avg_cost_usd": (sum(costs) / len(costs)) if costs else None,
+        "min_cost_usd": min(costs) if costs else None,
+        "max_cost_usd": max(costs) if costs else None,
         "samples": len(durs),
         "window": window,
+        "model": config.active_model_name(),
     }
 
 
@@ -529,19 +578,19 @@ def _find_complete_by_sha(sha: str) -> dict | None:
     """Return the most recent COMPLETE upload row matching this SHA256, or None."""
     if not sha:
         return None
-    conn = _connect()
+    sql = text("""
+        SELECT * FROM uploads
+        WHERE pdf_sha256 = :sha
+          AND state = 'complete'
+          AND deleted_at IS NULL
+        ORDER BY uploaded_at DESC LIMIT 1
+    """)
     try:
-        row = conn.execute(
-            """SELECT * FROM uploads
-               WHERE pdf_sha256 = ?
-                 AND state = 'complete'
-                 AND deleted_at IS NULL
-               ORDER BY uploaded_at DESC LIMIT 1""",
-            (sha,),
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+        with _initdb.get_engine().connect() as conn:
+            row = conn.execute(sql, {"sha": sha}).mappings().first()
+    except Exception:
+        return None
+    return dict(row) if row else None
 
 
 def _ensure_unique_display_id(proposed: str) -> str:
@@ -565,20 +614,22 @@ def _find_duplicate(sha: str, exclude_upload_id: str | None = None) -> dict | No
     Used to flag duplicate-content uploads in the response."""
     if not sha:
         return None
-    conn = _connect()
+    sql = text("""
+        SELECT upload_id, display_id, original_filename, uploaded_at
+        FROM uploads
+        WHERE pdf_sha256 = :sha
+          AND deleted_at IS NULL
+          AND upload_id != COALESCE(:exclude, '')
+        ORDER BY uploaded_at DESC LIMIT 1
+    """)
     try:
-        row = conn.execute(
-            """SELECT upload_id, display_id, original_filename, uploaded_at
-               FROM uploads
-               WHERE pdf_sha256 = ?
-                 AND deleted_at IS NULL
-                 AND upload_id != COALESCE(?, '')
-               ORDER BY uploaded_at DESC LIMIT 1""",
-            (sha, exclude_upload_id),
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+        with _initdb.get_engine().connect() as conn:
+            row = conn.execute(
+                sql, {"sha": sha, "exclude": exclude_upload_id}
+            ).mappings().first()
+    except Exception:
+        return None
+    return dict(row) if row else None
 
 
 @app.get("/api/status/{paper_id}")
@@ -666,6 +717,43 @@ def _safe_json(s: Any) -> list:
         return json.loads(s)
     except Exception:
         return []
+
+
+@app.post("/api/upload/{paper_id}/cancel")
+def cancel_upload(paper_id: str) -> dict[str, Any]:
+    """Request cancellation of an in-flight extraction.
+
+    Sets state='cancelling' on the uploads row. The background worker checks
+    this state at every sub-stage transition (~once per agent call) and bails
+    out by raising _CancelledByUser, which the run handler converts to
+    state='cancelled'. So latency between click and actual stop is at most
+    one agent call (~5-30s depending on stage).
+
+    Already-complete or already-failed uploads are no-ops.
+    """
+    upload_row = _initdb.get_upload_by_display_id(paper_id)
+    if upload_row is None:
+        raise HTTPException(status_code=404, detail="paper_id not found")
+
+    state = upload_row.get("state")
+    upload_id = upload_row.get("upload_id")
+
+    if state in ("complete", "failed", "cancelled"):
+        return {
+            "paper_id": paper_id,
+            "state": state,
+            "cancelled": False,
+            "reason": f"already_{state}",
+        }
+    if state == "cancelling":
+        return {"paper_id": paper_id, "state": state, "cancelled": True,
+                "reason": "already_cancelling"}
+
+    _initdb.update_upload(upload_id, {"state": "cancelling",
+                                      "stage": "cancelling"})
+    _set_job(paper_id, state="cancelling", stage="cancelling")
+    return {"paper_id": paper_id, "state": "cancelling", "cancelled": True,
+            "reason": "requested"}
 
 
 @app.get("/api/results/{paper_id}")
@@ -1112,38 +1200,91 @@ def history(limit: int = 100) -> dict[str, Any]:
     return {"items": items, "count": len(items)}
 
 
+# ---- Validation / benchmark endpoints (public read-only) ----
+# Backed by api/validation.py — reads CIViC gold + cached extractions and
+# returns audit-ready JSON for the /validation page. No auth needed.
+
+@app.get("/api/validation/summary")
+def validation_summary() -> dict[str, Any]:
+    from api.validation import get_summary
+    return get_summary()
+
+
+@app.get("/api/validation/history")
+def validation_history() -> dict[str, Any]:
+    from api.validation import get_history
+    return get_history()
+
+
+@app.get("/api/validation/paper/{pmid}")
+def validation_paper_detail(pmid: str) -> dict[str, Any]:
+    from api.validation import get_paper_detail
+    out = get_paper_detail(pmid)
+    if out.get("error"):
+        raise HTTPException(status_code=404, detail=out["error"])
+    return out
+
+
+@app.get("/api/validation/paper/{pmid}/download")
+def validation_paper_download(pmid: str):
+    """Auditable Excel pack for one paper (Summary + Canonical + Gold + Extracted)."""
+    from api.validation import build_paper_xlsx
+    blob = build_paper_xlsx(pmid)
+    if blob is None:
+        raise HTTPException(status_code=404, detail="pmid_not_in_manifest")
+    return StreamingResponse(
+        io.BytesIO(blob),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="validation_{pmid}.xlsx"'
+        },
+    )
+
+
+@app.get("/api/validation/download")
+def validation_summary_download():
+    """All-papers benchmark export (Aggregate + Per_Paper + Version_History)."""
+    from api.validation import build_summary_xlsx
+    blob = build_summary_xlsx()
+    return StreamingResponse(
+        io.BytesIO(blob),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="litextract_validation_pack.xlsx"'
+        },
+    )
+
+
 # ---- DB helpers (read-only — writes happen inside pipeline_local) ----
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
+# All read endpoints route through SQLAlchemy via init_db.get_engine() so the
+# same code runs against SQLite (local dev) and Postgres (production).
 
 def _exists_in_db(paper_id: str) -> bool:
-    if not config.DB_PATH.exists():
+    sql = text("SELECT 1 FROM runs_openai WHERE pubmed_id = :pmid LIMIT 1")
+    try:
+        with _initdb.get_engine().connect() as conn:
+            return conn.execute(sql, {"pmid": paper_id}).first() is not None
+    except Exception:
         return False
-    with _connect() as conn:
-        cur = conn.execute(
-            "SELECT 1 FROM runs_openai WHERE pubmed_id = ? LIMIT 1", (paper_id,)
-        )
-        return cur.fetchone() is not None
 
 
 def _fetch_db_meta(paper_id: str) -> dict[str, Any] | None:
-    if not config.DB_PATH.exists():
+    sql = text("""
+        SELECT run_id, run_datetime, llm_model, disease, study_types, bm_types,
+               confidence, study_details_count, bm_details_count, bm_results_count,
+               inferences_count, extraction_cost_usd, extraction_input_tokens,
+               extraction_output_tokens
+        FROM runs_openai
+        WHERE pubmed_id = :pmid
+        ORDER BY run_datetime DESC LIMIT 1
+    """)
+    try:
+        with _initdb.get_engine().connect() as conn:
+            row = conn.execute(sql, {"pmid": paper_id}).mappings().first()
+    except Exception:
         return None
-    with _connect() as conn:
-        row = conn.execute(
-            """SELECT run_id, run_datetime, llm_model, disease, study_types, bm_types,
-                      confidence, study_details_count, bm_details_count, bm_results_count,
-                      inferences_count, extraction_cost_usd, extraction_input_tokens,
-                      extraction_output_tokens
-               FROM runs_openai
-               WHERE pubmed_id = ?
-               ORDER BY run_datetime DESC LIMIT 1""",
-            (paper_id,),
-        ).fetchone()
     if not row:
         return None
     out = dict(row)
@@ -1156,25 +1297,28 @@ def _fetch_db_meta(paper_id: str) -> dict[str, Any] | None:
 
 
 def _fetch_history(limit: int = 100) -> list[dict[str, Any]]:
-    if not config.DB_PATH.exists():
+    # Kept for backwards-compat; new history endpoint reads `uploads` table
+    # directly via _initdb.list_uploads().
+    sql = text("""
+        SELECT pubmed_id, run_datetime, llm_model, disease, study_types, bm_types,
+               confidence, study_details_count, bm_details_count, bm_results_count,
+               inferences_count, extraction_cost_usd
+        FROM runs_openai
+        WHERE pubmed_id != 'Avg'
+          AND (pubmed_id, run_datetime) IN (
+                SELECT pubmed_id, MAX(run_datetime)
+                FROM runs_openai
+                WHERE pubmed_id != 'Avg'
+                GROUP BY pubmed_id
+          )
+        ORDER BY run_datetime DESC
+        LIMIT :lim
+    """)
+    try:
+        with _initdb.get_engine().connect() as conn:
+            rows = conn.execute(sql, {"lim": limit}).mappings().all()
+    except Exception:
         return []
-    with _connect() as conn:
-        rows = conn.execute(
-            """SELECT pubmed_id, run_datetime, llm_model, disease, study_types, bm_types,
-                      confidence, study_details_count, bm_details_count, bm_results_count,
-                      inferences_count, extraction_cost_usd
-               FROM runs_openai
-               WHERE pubmed_id != 'Avg'
-                 AND (pubmed_id, run_datetime) IN (
-                    SELECT pubmed_id, MAX(run_datetime)
-                    FROM runs_openai
-                    WHERE pubmed_id != 'Avg'
-                    GROUP BY pubmed_id
-                 )
-               ORDER BY run_datetime DESC
-               LIMIT ?""",
-            (limit,),
-        ).fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
         d = dict(r)

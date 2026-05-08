@@ -34,6 +34,15 @@ export function fmtDuration(ms: number | null | undefined): string {
   return rest === 0 ? `${m}m` : `${m}m ${rest}s`;
 }
 
+/** Format a USD cost. Pico amounts get a friendly "<$0.001"; otherwise 4 decimals. */
+export function fmtCost(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  if (usd === 0) return "$0";
+  if (usd < 0.001) return "<$0.001";
+  if (usd < 1) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
 /**
  * ETA estimate based on rolling average duration and how long this run has
  * already been running. Returns null when avg is unknown.

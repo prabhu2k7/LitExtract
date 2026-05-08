@@ -85,8 +85,13 @@ class BMResultsAgent(BaseExtractionAgent):
                     r["statistical_test"] = repl
                     break
 
+            # LLM may emit p_value as either a string ("p<0.05") or a raw
+            # numeric (0.04). Coerce to string before any string-ops.
+            p_val = r.get("p_value")
+            p_raw = "" if p_val is None else str(p_val).strip()
+            r["p_value"] = p_raw
+
             if not r.get("significance_call"):
-                p_raw = (r.get("p_value") or "").strip()
                 try:
                     if p_raw:
                         p_num = float(re.sub(r"[<>=]", "", p_raw))
@@ -94,7 +99,6 @@ class BMResultsAgent(BaseExtractionAgent):
                 except ValueError:
                     pass
 
-            p_raw = (r.get("p_value") or "").strip()
             if p_raw and not r.get("p_value_prefix"):
                 m = re.match(r"([<>=])\s*(.*)", p_raw)
                 if m:

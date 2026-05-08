@@ -36,6 +36,7 @@ from scripts.goldset.civic import (
     fetch_civic_tsv, load_civic, filter_useful, filter_pharma_relevant,
     select_25_pmids,
 )
+from scripts.goldset.curated import select_curated, SHOWCASE
 from scripts.goldset.pmc import pmid_to_pmcid, check_oa, download_pdf, PmcRecord
 from scripts.goldset.schema import emit_rows_for_paper
 from column_mappings import SHEET_COLUMNS
@@ -51,6 +52,9 @@ def main() -> int:
                     help="How many PMIDs to TRY before giving up on hitting target. "
                          "End-to-end success rate is ~5%% (PMCID×OA×PDF-render), "
                          "so 400 candidates -> ~25 successful downloads.")
+    ap.add_argument("--curated", action="store_true",
+                    help="Use the curated-pharma-showcase picker (10 specific "
+                         "biomarker x disease tuples) instead of top-N random.")
     args = ap.parse_args()
 
     out_dir: Path = args.out.resolve()
@@ -75,11 +79,31 @@ def main() -> int:
     n_papers = df["pmid"].nunique()
     print(f"      kept {len(df)} rows across {n_papers} unique PMIDs")
 
-    # 3) Pick larger candidate pool than target_count (some won't be OA)
-    print(f"[3/7] Selecting top {args.candidate_pool} candidate PMIDs...")
-    pool_size = min(args.candidate_pool, n_papers)
-    candidates = select_25_pmids(df, target_count=pool_size)
-    print(f"      candidates: {len(candidates)}")
+    # 3) Pick PMIDs — either curated showcase or top-N
+    if args.curated:
+        print(f"[3/7] Selecting curated pharma-showcase PMIDs ({len(SHOWCASE)} target categories)...")
+        # Re-load the unfiltered df because curated picker targets specific
+        # (gene, disease) tuples that may not all be Predictive/A/B/C-level
+        # — we keep ALL accepted rows for those PMIDs in the final gold.
+        full_df = load_civic(tsv_path)
+        if "evidence_status" in full_df.columns:
+            full_df = full_df[full_df["evidence_status"].fillna("").str.lower() == "accepted"]
+        picks = select_curated(full_df)
+        candidates = [pmid for pmid, _, _ in picks]
+        # Replace the pharma-filtered df with the curated subset so step 7
+        # generates gold rows from ALL accepted CIViC evidence for those papers.
+        df = full_df[full_df["pmid"].isin(candidates)]
+        # Bound target_count by the number of categories we actually found
+        args.target_count = max(len(candidates), 1)
+        target_by_pmid = {pmid: t for pmid, t, _ in picks}
+        print(f"      candidates: {len(candidates)} of {len(SHOWCASE)} categories filled "
+              f"({len(df)} CIViC evidence rows total)")
+    else:
+        print(f"[3/7] Selecting top {args.candidate_pool} candidate PMIDs...")
+        pool_size = min(args.candidate_pool, n_papers)
+        candidates = select_25_pmids(df, target_count=pool_size)
+        target_by_pmid = {}
+        print(f"      candidates: {len(candidates)}")
 
     # 4) PMID -> PMCID
     print("[4/7] Resolving PMIDs to PMCIDs (NCBI ID converter)...")
@@ -96,30 +120,55 @@ def main() -> int:
         records.append(rec)
         if i % 10 == 0:
             print(f"      checked {i}/{len(with_pmcid)}")
-        if sum(1 for r in records if r.is_oa) >= args.target_count + 15:
-            # Early exit — we have enough OA candidates
+        if not args.curated and sum(1 for r in records if r.is_oa) >= args.target_count + 15:
+            # Early exit (random mode only — curated needs all candidates)
             break
 
-    # Any OA paper is downloadable via Europe PMC's ?pdf=render endpoint,
-    # even when NCBI's OA service doesn't enumerate a `format=pdf` link.
-    oa_records = [r for r in records if r.is_oa]
-    print(f"      OA-licensed: {len(oa_records)} / {len(records)} "
-          f"(of which {sum(1 for r in oa_records if r.pdf_url)} have direct PDF URLs)")
+    if args.curated:
+        # Curated mode: try EPMC for ANY PMCID-indexed paper. EPMC's
+        # open-access corpus is broader than NCBI's strict OA subset; the
+        # download itself validates with the %PDF magic byte check, so
+        # paywalled papers fail cleanly and we move to the next candidate
+        # for that target.
+        oa_records = [r for r in records if r.pmcid]
+        n_strict_oa = sum(1 for r in records if r.is_oa)
+        print(f"      will attempt EPMC for all {len(oa_records)} PMCID-indexed papers "
+              f"(NCBI-strict-OA subset is {n_strict_oa})")
+    else:
+        oa_records = [r for r in records if r.is_oa]
+        print(f"      OA-licensed: {len(oa_records)} / {len(records)} "
+              f"(of which {sum(1 for r in oa_records if r.pdf_url)} have direct PDF URLs)")
 
-    # 6) Download PDFs
+    # 6) Download PDFs (curated mode: at most one per target, prefer densest)
     print(f"[6/7] Downloading up to {args.target_count} PDFs to {pdfs_dir}...")
     successes: list[PmcRecord] = []
+    successful_targets: set[str] = set()
+    target_total = len({t.label for t in target_by_pmid.values()}) if target_by_pmid else 0
     for rec in oa_records:
-        if len(successes) >= args.target_count:
+        target = target_by_pmid.get(rec.pmid) if target_by_pmid else None
+        # In curated mode, skip if this target already has a successful download
+        if target is not None and target.label in successful_targets:
+            continue
+        # In random mode, stop when we have enough
+        if not target_by_pmid and len(successes) >= args.target_count:
             break
         path = download_pdf(rec, pdfs_dir)
+        tag = f" [{target.label}]" if target else ""
         if path:
-            print(f"      OK   {rec.pmid}  {rec.pmcid}  {path.stat().st_size/1024:.0f} KB  ({rec.license or '-'})")
+            print(f"      OK   {rec.pmid}  {rec.pmcid}  {path.stat().st_size/1024:.0f} KB  ({rec.license or '-'}){tag}")
             successes.append(rec)
+            if target is not None:
+                successful_targets.add(target.label)
         else:
-            print(f"      FAIL {rec.pmid}  {rec.pmcid}  {rec.error}")
+            print(f"      FAIL {rec.pmid}  {rec.pmcid}  {rec.error}{tag}")
+        # In curated mode, stop when ALL targets covered
+        if target_by_pmid and len(successful_targets) >= target_total:
+            break
 
-    print(f"      downloaded {len(successes)} / {args.target_count}")
+    if target_by_pmid:
+        print(f"      downloaded {len(successes)} (covering {len(successful_targets)}/{target_total} targets)")
+    else:
+        print(f"      downloaded {len(successes)} / {args.target_count}")
 
     # 7) Build goldset.xlsx + manifest.csv + README
     print("[7/7] Building goldset.xlsx + manifest.csv + README.md...")

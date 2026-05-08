@@ -18,6 +18,33 @@ DOCINTEL_INPUT_DIR = PROJECT_ROOT / "docintel_process" / "input"
 for _p in (DB_PATH.parent, RAG_CACHE_DIR, DOCINTEL_INPUT_DIR):
     _p.mkdir(parents=True, exist_ok=True)
 
+# ---- Database routing ----
+# DATABASE_URL is the master switch between SQLite (local dev) and Postgres
+# (production / HF Space / wherever).
+#   - empty / unset   -> SQLite at DB_PATH
+#   - postgresql://.. -> connect to that Postgres (Neon, etc.)
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+
+def database_url() -> str:
+    """Return the SQLAlchemy-compatible URL for whichever DB is configured."""
+    if DATABASE_URL:
+        # Normalise legacy postgres:// scheme -> postgresql:// (SQLAlchemy
+        # requires the latter; some hosts still emit the former)
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        # Use psycopg2 driver explicitly so SQLAlchemy doesn't try psycopg3
+        if url.startswith("postgresql://") and "+psycopg" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
+    # SQLite fallback for local dev
+    return f"sqlite:///{DB_PATH.as_posix()}"
+
+
+def is_postgres() -> bool:
+    return bool(DATABASE_URL)
+
 # ---- Azure Document Intelligence ----
 DOCUMENTINTELLIGENCE_ENDPOINT = os.getenv("DOCUMENTINTELLIGENCE_ENDPOINT", "")
 DOCUMENTINTELLIGENCE_API_KEY  = os.getenv("DOCUMENTINTELLIGENCE_API_KEY", "")

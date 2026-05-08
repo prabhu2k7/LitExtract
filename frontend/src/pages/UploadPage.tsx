@@ -18,8 +18,10 @@ import {
 } from "lucide-react";
 import {
   uploadPdf,
+  cancelUpload,
   getStatus,
   getEta,
+  getHistory,
   type JobState,
   type UploadResponse,
   type StatusResponse,
@@ -30,14 +32,29 @@ import Pill from "../components/Pill";
 import { useToast } from "../components/Toast";
 import ApiKeyModal from "../components/ApiKeyModal";
 
-type ItemPhase = "uploading" | "queued" | "processing" | "complete" | "failed" | "error";
+type ItemPhase =
+  | "uploading"
+  | "queued"
+  | "processing"
+  | "complete"
+  | "failed"
+  | "error"
+  | "cancelling"
+  | "cancelled";
 
 type QueueItem = {
   localId: string;
-  file: File;
+  // `file` is undefined for items restored from server history — we never
+  // had the original File object in this browser session.
+  file?: File;
+  // Filename to render when `file` is missing (restored items).
+  restoredFilename?: string;
+  // Bytes shown next to the name when restored.
+  restoredSizeBytes?: number;
   upload?: UploadResponse;
   status?: StatusResponse;
   error?: string;
+  cancelling?: boolean;
 };
 
 const POLL_MS = 1500;
@@ -87,7 +104,8 @@ export default function UploadPage() {
         for (;;) {
           const s = await getStatus(upload.display_id);
           updateItem(localId, { status: s });
-          if (s.state === "complete" || s.state === "failed") break;
+          if (s.state === "complete" || s.state === "failed" || s.state === "cancelled")
+            break;
           await new Promise((r) => setTimeout(r, POLL_MS));
         }
       } catch (e) {
@@ -139,6 +157,99 @@ export default function UploadPage() {
     [forceRerun, trainingMode, runItem]
   );
 
+  // Poll a display_id we already know about (restored from server history,
+  // or after a successful upload). Doesn't upload anything — just tracks
+  // status until the run reaches a terminal state.
+  const pollExistingItem = useCallback(
+    async (localId: string, displayId: string) => {
+      try {
+        for (;;) {
+          const s = await getStatus(displayId);
+          updateItem(localId, { status: s });
+          if (
+            s.state === "complete" ||
+            s.state === "failed" ||
+            s.state === "cancelled"
+          )
+            break;
+          await new Promise((r) => setTimeout(r, POLL_MS));
+        }
+      } catch (e) {
+        const err = e as Error;
+        updateItem(localId, { error: err.message });
+      }
+    },
+    [updateItem]
+  );
+
+  // Cancel an in-flight extraction. The backend marks state='cancelling';
+  // the worker bails at the next sub-stage transition. The polling loop
+  // sees state='cancelled' and exits naturally.
+  const handleCancel = useCallback(
+    async (localId: string, displayId: string) => {
+      updateItem(localId, { cancelling: true });
+      try {
+        const r = await cancelUpload(displayId);
+        if (!r.cancelled && r.reason && r.reason.startsWith("already_")) {
+          // Race: extraction already finished or failed by the time the
+          // user clicked. The next poll will pick up the real state.
+          updateItem(localId, { cancelling: false });
+          toast.info("Already done", `Run finished as ${r.state} before cancel could land.`);
+        } else {
+          toast.info("Cancelling", "Stopping at the next stage transition…");
+        }
+      } catch (e) {
+        updateItem(localId, { cancelling: false });
+        toast.error("Cancel failed", (e as Error).message);
+      }
+    },
+    [updateItem, toast]
+  );
+
+  // On mount: pick up any extractions that are still in flight on the
+  // server (queued / processing / cancelling). This handles the case
+  // where the user navigated away and returned to /upload mid-extraction.
+  const restoredOnceRef = useRef(false);
+  useEffect(() => {
+    if (restoredOnceRef.current) return;
+    restoredOnceRef.current = true;
+
+    (async () => {
+      let history;
+      try {
+        history = await getHistory();
+      } catch {
+        return;
+      }
+      const inFlight = history.items.filter((it) =>
+        ["queued", "processing", "cancelling"].includes(it.state as string)
+      );
+      if (inFlight.length === 0) return;
+      const restored: QueueItem[] = inFlight.map((it) => ({
+        localId: `r_${it.upload_id}`,
+        restoredFilename: it.filename || it.display_id,
+        upload: {
+          paper_id: it.display_id,
+          display_id: it.display_id,
+          upload_id: it.upload_id,
+          pmid: it.pmid,
+          filename: it.filename || it.display_id,
+          size_bytes: 0,
+          state: it.state as JobState,
+          cached: false,
+        },
+      }));
+      setQueue((q) => {
+        // Don't duplicate — only add restored items not already in the queue
+        const known = new Set(q.map((x) => x.upload?.display_id).filter(Boolean));
+        return [...q, ...restored.filter((r) => !known.has(r.upload!.display_id))];
+      });
+      for (const it of restored) {
+        pollExistingItem(it.localId, it.upload!.display_id);
+      }
+    })();
+  }, [pollExistingItem]);
+
   // After the user saves a key in the modal, re-enqueue any files that were
   // dropped before they had a key configured.
   const handleKeySaved = useCallback(() => {
@@ -163,12 +274,14 @@ export default function UploadPage() {
       (q) =>
         q.status?.state === "complete" ||
         q.status?.state === "failed" ||
+        q.status?.state === "cancelled" ||
         q.error
     );
     if (allDone && !batchToastedRef.current) {
       batchToastedRef.current = true;
       const ok = queue.filter((q) => q.status?.state === "complete").length;
-      const failed = queue.length - ok;
+      const cancelled = queue.filter((q) => q.status?.state === "cancelled").length;
+      const failed = queue.length - ok - cancelled;
       const totalCost = queue.reduce(
         (sum, q) => sum + (q.status?.cost?.cost_usd ?? 0),
         0
@@ -307,6 +420,7 @@ export default function UploadPage() {
               avgMs={etaInfo?.avg_duration_ms ?? null}
               onView={(id) => navigate(`/results/${id}`)}
               onRemove={() => removeItem(item.localId)}
+              onCancel={(displayId) => handleCancel(item.localId, displayId)}
             />
           ))}
         </div>
@@ -370,11 +484,13 @@ function QueueRow({
   avgMs,
   onView,
   onRemove,
+  onCancel,
 }: {
   item: QueueItem;
   avgMs: number | null;
   onView: (displayId: string) => void;
   onRemove: () => void;
+  onCancel: (displayId: string) => void;
 }) {
   const upload = item.upload;
   const status = item.status;
@@ -385,7 +501,19 @@ function QueueRow({
   const isCacheHit = upload?.cached === true;
   const isComplete = phase === "complete";
   const isFailed = phase === "failed" || phase === "error";
-  const isWorking = phase === "uploading" || phase === "queued" || phase === "processing";
+  const isCancelled = phase === "cancelled";
+  const isCancelling = phase === "cancelling" || item.cancelling === true;
+  const isWorking =
+    phase === "uploading" || phase === "queued" || phase === "processing";
+
+  // What name + size to show. Restored items have no File object.
+  const displayName = item.file?.name ?? item.restoredFilename ?? upload?.filename ?? "(restored)";
+  const displaySizeKb =
+    item.file?.size != null
+      ? item.file.size / 1024
+      : item.restoredSizeBytes != null
+      ? item.restoredSizeBytes / 1024
+      : null;
 
   // Progress + ETA
   const progressPct = stagePct(status?.stage);
@@ -426,12 +554,19 @@ function QueueRow({
             <div className="min-w-0 flex-1">
               <div
                 className="text-sm font-medium text-slate-900 truncate"
-                title={item.file.name}
+                title={displayName}
               >
-                {item.file.name}
+                {displayName}
               </div>
               <div className="mt-0.5 text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
-                <span>{(item.file.size / 1024).toFixed(1)} KB</span>
+                {displaySizeKb != null && (
+                  <span>{displaySizeKb.toFixed(1)} KB</span>
+                )}
+                {!item.file && (
+                  <span className="text-amber-600" title="Picked up from server history — extraction continued while you were away">
+                    restored
+                  </span>
+                )}
                 {upload?.display_id && (
                   <>
                     <span className="text-slate-300">·</span>
@@ -473,7 +608,20 @@ function QueueRow({
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <StateBadge phase={phase} cached={isCacheHit} />
-            {(isComplete || isFailed) && (
+            {isWorking && upload?.display_id && (
+              <button
+                type="button"
+                onClick={() => onCancel(upload.display_id)}
+                disabled={isCancelling}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-[11px] font-medium text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                aria-label="Cancel extraction"
+                title="Cancel — stops at the next stage transition"
+              >
+                <X className="w-3 h-3" />
+                {isCancelling ? "Cancelling…" : "Cancel"}
+              </button>
+            )}
+            {(isComplete || isFailed || isCancelled) && (
               <button
                 type="button"
                 onClick={onRemove}
@@ -607,6 +755,18 @@ function StateBadge({ phase, cached }: { phase: ItemPhase; cached?: boolean }) {
     return (
       <Pill tone="slate">
         <Loader2 className="w-3 h-3 animate-spin" /> Uploading
+      </Pill>
+    );
+  if (phase === "cancelling")
+    return (
+      <Pill tone="amber">
+        <Loader2 className="w-3 h-3 animate-spin" /> Cancelling
+      </Pill>
+    );
+  if (phase === "cancelled")
+    return (
+      <Pill tone="slate">
+        <X className="w-3 h-3" /> Cancelled
       </Pill>
     );
   return (

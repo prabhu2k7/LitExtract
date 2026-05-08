@@ -149,11 +149,20 @@ class _SensitiveHeaderFilter(logging.Filter):
     """Mutates uvicorn access-log messages so any 'sk-...' substring is masked."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        # Only mutate STRING args — uvicorn's access logger uses %d for the
+        # HTTP status (an int), so we must not coerce numbers to strings.
         if record.args:
             try:
-                record.args = tuple(
-                    _SK_PATTERN.sub("[REDACTED]", str(a)) for a in record.args
-                )
+                if isinstance(record.args, tuple):
+                    record.args = tuple(
+                        _SK_PATTERN.sub("[REDACTED]", a) if isinstance(a, str) else a
+                        for a in record.args
+                    )
+                elif isinstance(record.args, dict):
+                    record.args = {
+                        k: (_SK_PATTERN.sub("[REDACTED]", v) if isinstance(v, str) else v)
+                        for k, v in record.args.items()
+                    }
             except Exception:
                 pass
         if isinstance(record.msg, str):

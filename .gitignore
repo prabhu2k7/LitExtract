@@ -42,6 +42,9 @@ db/*.db
 db/*.db-journal
 db/*.db-wal
 db/*.db-shm
+db/*.db.bak-*
+db/*.bak
+db/*.bak-*
 input/*.pdf
 input/*.xlsx
 biomarker-cl-out.xlsx

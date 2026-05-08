@@ -1,5 +1,5 @@
 import { NavLink, Link } from "react-router-dom";
-import { Microscope, Upload, History, Activity, Info, Sparkles, Beaker, Settings, KeyRound } from "lucide-react";
+import { Microscope, Upload, History, Activity, Info, Sparkles, Beaker, Settings, KeyRound, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -78,6 +78,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/biomarkers" className={navLinkClass}>
             <Beaker className="w-4 h-4" />
             Biomarkers
+          </NavLink>
+          <NavLink to="/validation" className={navLinkClass}>
+            <ShieldCheck className="w-4 h-4" />
+            Validation
           </NavLink>
           <NavLink to="/settings" className={navLinkClass}>
             <Settings className="w-4 h-4" />
