@@ -1006,20 +1006,26 @@ def _canon(s: Any) -> str:
     return str(s or "").strip().upper()
 
 
-def _mode_or_first(values: list[str]) -> str | None:
-    """Return the most common non-empty value, ties broken by first-seen."""
+def _mode_or_first(values: list[Any]) -> str | None:
+    """Return the most common non-empty value, ties broken by first-seen.
+
+    Coerces non-strings (NaN floats from openpyxl empty cells, ints, etc.)
+    to strings before strip — pandas' .astype(str) doesn't always run on
+    rows that came from concat'd DataFrames where one side had NaN.
+    """
     seen: dict[str, int] = {}
     order: list[str] = []
     for v in values:
-        v = (v or "").strip()
-        if not v:
+        if v is None:
             continue
-        if v not in seen:
-            order.append(v)
-        seen[v] = seen.get(v, 0) + 1
+        s = str(v).strip()
+        if not s or s.lower() == "nan":
+            continue
+        if s not in seen:
+            order.append(s)
+        seen[s] = seen.get(s, 0) + 1
     if not seen:
         return None
-    # Sort by count desc, then by first-seen
     return sorted(order, key=lambda x: (-seen[x], order.index(x)))[0]
 
 
