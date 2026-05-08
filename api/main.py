@@ -1031,18 +1031,48 @@ def biomarkers(limit: int = 200) -> dict[str, Any]:
     biomarker_name, attach result counts + diseases + outcomes from BM_Results
     and Inferences. Joined to uploads-table metadata for paper context.
     """
-    if not config.OUTPUT_FILE.exists():
+    # Read both the live, container-local cache (biomarker-cl-out.xlsx) AND
+    # the repo-bundled validation snapshot. Concat + dedupe by pubmed_id so:
+    #   - On HF (no live cache yet): bundled showcase is visible
+    #   - On local dev (live cache populated): same data, no duplication
+    #   - User uploads via HF: appear in live, layered on top of bundled
+    # Bundled snapshot path is repo-relative (always next to api/main.py),
+    # NOT VALIDATION_DIR, which is goldset-side and may point elsewhere.
+
+    def _read_sheets_safe(p: Path) -> dict[str, pd.DataFrame]:
+        if not p.exists():
+            return {}
+        try:
+            return pd.read_excel(p, sheet_name=None)
+        except Exception:
+            return {}
+
+    _bundled_extractions_path = (
+        Path(__file__).resolve().parent.parent / "validation_set" / "extractions.xlsx"
+    )
+    live_sheets    = _read_sheets_safe(config.OUTPUT_FILE)
+    bundled_sheets = _read_sheets_safe(_bundled_extractions_path)
+
+    if not live_sheets and not bundled_sheets:
         return {"items": [], "count": 0, "papers_scanned": 0}
 
-    try:
-        sheets = pd.read_excel(config.OUTPUT_FILE, sheet_name=None)
-    except Exception:
-        return {"items": [], "count": 0, "papers_scanned": 0}
+    def _merge(name: str) -> pd.DataFrame:
+        a = live_sheets.get(name, pd.DataFrame())
+        b = bundled_sheets.get(name, pd.DataFrame())
+        if a.empty and b.empty:
+            return pd.DataFrame()
+        if a.empty:
+            return b.copy()
+        if b.empty:
+            return a.copy()
+        # Concat then drop duplicate (pubmed_id, all-other-cols) rows
+        combined = pd.concat([a, b], ignore_index=True, sort=False)
+        return combined.drop_duplicates().reset_index(drop=True)
 
-    bmd = sheets.get("BM_Details", pd.DataFrame())
-    bmr = sheets.get("BM_Results", pd.DataFrame())
-    sd  = sheets.get("Study_Details", pd.DataFrame())
-    inf = sheets.get("Inferences", pd.DataFrame())
+    bmd = _merge("BM_Details")
+    bmr = _merge("BM_Results")
+    sd  = _merge("Study_Details")
+    inf = _merge("Inferences")
 
     # Restrict to uploads that exist in the uploads table (active ones)
     active_pids = set()
@@ -1052,6 +1082,15 @@ def biomarkers(limit: int = 200) -> dict[str, Any]:
         if pid:
             active_pids.add(pid)
             upload_meta[pid] = u
+
+    # Showcase / validation PMIDs are also "active" — they were extracted via
+    # CLI tooling, not uploaded through the UI, so they wouldn't appear in
+    # the uploads table. Without this, the registry is empty on a fresh HF
+    # deploy until someone uploads something.
+    if bundled_sheets:
+        sd_b = bundled_sheets.get("Study_Details", pd.DataFrame())
+        if not sd_b.empty and "pubmed_id" in sd_b.columns:
+            active_pids.update(sd_b["pubmed_id"].astype(str).tolist())
 
     if not active_pids:
         return {"items": [], "count": 0, "papers_scanned": 0}
@@ -1135,10 +1174,12 @@ def biomarkers(limit: int = 200) -> dict[str, Any]:
         diseases = sorted({(paper_disease.get(p) or "").strip() for p in paper_ids
                            if paper_disease.get(p)})
 
-        first_seen = min((upload_meta[p].get("uploaded_at") or "")
-                         for p in paper_ids if p in upload_meta) or None
-        last_seen = max((upload_meta[p].get("uploaded_at") or "")
-                        for p in paper_ids if p in upload_meta) or None
+        # Showcase / bundled PMIDs may not exist in upload_meta — guard min/max
+        # against empty iterables (uploaded_at is purely informational here).
+        ts = [upload_meta[p].get("uploaded_at") or ""
+              for p in paper_ids if p in upload_meta]
+        first_seen = min(ts) if ts else None
+        last_seen  = max(ts) if ts else None
 
         items.append({
             "canonical_name":       canon,
