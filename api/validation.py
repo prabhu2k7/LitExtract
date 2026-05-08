@@ -24,13 +24,65 @@ from verification_agent import (
     VerificationAgent,
     _normalize_biomarker_name,
 )
-from excel_handler import load_paper_from_output
+from excel_handler import load_paper_from_output as _load_live_extraction
 
 
-VALIDATION_DIR = Path(os.getenv(
-    "VALIDATION_DIR",
-    "D:/dev/pubmed_files/showcase_10",
-))
+def _default_validation_dir() -> Path:
+    """Resolution order:
+
+      1. VALIDATION_DIR env var (explicit override)
+      2. Local dev path on the maintainer's box (so workflow stays smooth)
+      3. Repo-bundled validation_set/ — guaranteed to exist on HF Space
+    """
+    env = os.getenv("VALIDATION_DIR", "").strip()
+    if env:
+        return Path(env)
+    local = Path("D:/dev/pubmed_files/showcase_10")
+    if local.exists():
+        return local
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / "validation_set"
+
+
+VALIDATION_DIR = _default_validation_dir()
+
+
+@lru_cache(maxsize=1)
+def _load_bundled_extractions() -> dict[str, pd.DataFrame]:
+    """Frozen snapshot of showcase-paper extractions, bundled in repo at
+    `validation_set/extractions.xlsx`. Used by /validation so the public
+    HF Space can render benchmark results without depending on the live
+    biomarker-cl-out.xlsx (which is gitignored and container-local)."""
+    p = VALIDATION_DIR / "extractions.xlsx"
+    if not p.exists():
+        return {}
+    return pd.read_excel(p, sheet_name=None)
+
+
+def load_paper_from_output(pmid: str) -> dict[str, list[dict]]:
+    """Bundled-first extraction lookup. Falls back to the live cache
+    (biomarker-cl-out.xlsx) only if the PMID isn't in the frozen snapshot.
+
+    This keeps /validation deterministic across deploys — pharma sees the
+    same numbers we publish, regardless of what's been uploaded since."""
+    sheets = _load_bundled_extractions()
+    if sheets:
+        result: dict[str, list[dict]] = {}
+        any_rows = False
+        for name, df in sheets.items():
+            if df.empty or "pubmed_id" not in df.columns:
+                result[name] = []
+                continue
+            sub = df[df["pubmed_id"].astype(str) == str(pmid)]
+            rows = sub.fillna("").to_dict(orient="records")
+            result[name] = rows
+            if rows:
+                any_rows = True
+        if any_rows:
+            return result
+    # Fallback — local dev where extractions.xlsx may be stale, OR PMIDs
+    # the validation set doesn't cover.
+    return _load_live_extraction(pmid)
 
 
 _SLOT_LABELS: dict[str, str] = {

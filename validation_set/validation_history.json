@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "validation_set": "showcase_10",
+  "gold_source": "CIViC (Clinical Interpretation of Variants in Cancer) — public, peer-curated",
+  "metric_definition": {
+    "canonical_biomarker_recall": "Per paper: % of unique gold biomarkers (after gene-level normalization across BM_Details/BM_Results/Inferences) that appear anywhere in extraction. Pharma headline metric.",
+    "full_f1": "Strict per-row, per-field F1 against CIViC gold. Bounded ~25-50% by design because CIViC encodes only drug-response evidence; extractor pulls every biomarker in the paper. Use for diagnostic comparison only."
+  },
+  "versions": [
+    {
+      "version": "v1",
+      "date": "2026-05-06",
+      "label": "Phase-1 normaliser",
+      "changes": [
+        "Verification agent ships with: protein↔gene aliases (HER2→ERBB2, etc.), 1-letter point mutation strip, 3-letter aa code strip, fusion target extraction, CIViC compound profile split on \" AND \"",
+        "First pass against CIViC gold for 10 showcase papers"
+      ],
+      "median_canonical_recall": null,
+      "mean_canonical_recall": null,
+      "median_f1": 17.4,
+      "mean_f1": 25.8,
+      "papers_total": 10,
+      "papers_scored": 10,
+      "notes": "Baseline before canonical-recall metric existed. F1-only scoring."
+    },
+    {
+      "version": "v2",
+      "date": "2026-05-07",
+      "label": "Canonical metric + orphan removed",
+      "changes": [
+        "Removed orphan PDF 26125448 (no CIViC evidence — was contaminating scores with 0%)",
+        "Added Canonical_Biomarker_Recall metric to VerificationAgent.verify()",
+        "rescore_baseline.py now iterates manifest, not pdf glob"
+      ],
+      "median_canonical_recall": 50.0,
+      "mean_canonical_recall": 58.3,
+      "median_f1": 30.0,
+      "mean_f1": 28.6,
+      "papers_total": 9,
+      "papers_scored": 9,
+      "notes": "First time we measured canonical recall. Shows 4/9 papers already at 100%."
+    },
+    {
+      "version": "v3",
+      "date": "2026-05-07",
+      "label": "Phase-2 normaliser fixes",
+      "changes": [
+        "Loss-of-function / gain-of-function: BRCA1 Loss-of-function → brca1",
+        "P-loop / kinase domain: ABL1 P-Loop Mutation → abl1",
+        "OR-split for compound profiles: KRAS G12 or KRAS G13 → kras",
+        "Bare aa-position: BRAF V600 → braf, KRAS G12/G13 → kras",
+        "BCR-ABL funnel: bcr-abl, BCR::ABL1 Fusion, Philadelphia chromosome all → abl1 (consistent kinase target rule)"
+      ],
+      "median_canonical_recall": 100.0,
+      "mean_canonical_recall": 83.3,
+      "median_f1": 39.0,
+      "mean_f1": 32.7,
+      "papers_total": 9,
+      "papers_scored": 9,
+      "notes": "Median canonical recall hits 100% for the first time. 7/9 papers at 100%."
+    },
+    {
+      "version": "v4",
+      "date": "2026-05-08",
+      "label": "Re-extracts + bug fixes + HGVS notation",
+      "changes": [
+        "Re-extracted 31580757 (BRAF non-V600, was uncached), 22802530 (HER2-Breast), 34247201 (KEAP1-NSCLC)",
+        "Fixed p_value float→string coercion in BMResultsAgent (was crashing on numeric LLM output)",
+        "Bumped LLM max_retries to 8 for transient TPM rate-limits",
+        "HGVS range/indel: BRAF V600_K601>E, BRAF T599_V600insT, BRAF L597P/Q/R/S all → braf"
+      ],
+      "median_canonical_recall": 100.0,
+      "mean_canonical_recall": 85.0,
+      "median_f1": 39.5,
+      "mean_f1": 33.5,
+      "papers_total": 10,
+      "papers_scored": 10,
+      "notes": "All 10 papers extracted. 8/10 at 100% canonical recall. Remaining 2 gaps: 22802530 (structural CIViC encoding mismatch — paper measures PI3K, CIViC encodes as ERBB2) and 34247201 (extractor missed KEAP1, captured downstream NQO1 only)."
+    }
+  ]
+}

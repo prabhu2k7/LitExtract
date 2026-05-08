@@ -1,0 +1,11 @@
+pmid,pmcid,license,civic_evidence_count,diseases,genes,evidence_levels,pdf_path,pdf_size_bytes
+26515464,PMC4770737,CC BY,3,Lung Non-small Cell Carcinoma,EGFR,D,D:\dev\pubmed_files\showcase_10\pdfs\26515464.pdf,6046091
+31580757,PMC10448865,,5,Melanoma,BRAF,B|C,D:\dev\pubmed_files\showcase_10\pdfs\31580757.pdf,1144903
+22247021,PMC3274509,,1,Lung Non-small Cell Carcinoma,KRAS,B,D:\dev\pubmed_files\showcase_10\pdfs\22247021.pdf,1647432
+22802530,PMC3404385,,3,Her2-receptor Positive Breast Cancer,ERBB2,D,D:\dev\pubmed_files\showcase_10\pdfs\22802530.pdf,2017173
+23346317,PMC3549512,CC BY-NC,2,Ovarian Cancer,BRCA1|BRCA2,B,D:\dev\pubmed_files\showcase_10\pdfs\23346317.pdf,199418
+19603024,PMC2720232,CC BY,21,Colorectal Cancer,BRAF|KRAS|PIK3CA,B,D:\dev\pubmed_files\showcase_10\pdfs\19603024.pdf,231811
+34247201,PMC8272721,CC BY,2,Lung Non-small Cell Carcinoma|Pancreatic Ductal Adenocarcinoma,KEAP1|NQO1,D,D:\dev\pubmed_files\showcase_10\pdfs\34247201.pdf,5063826
+22371878,PMC4916559,,41,Chronic Myeloid Leukemia,ABL1|BCR::ABL1,B|C,D:\dev\pubmed_files\showcase_10\pdfs\22371878.pdf,291406
+34625502,PMC9762329,CC BY-NC-ND,16,Cancer|Lung Non-small Cell Carcinoma,EML4::NTRK3|LMNA::NTRK1|NTRK3,C|D,D:\dev\pubmed_files\showcase_10\pdfs\34625502.pdf,1402692
+30725494,PMC6849823,CC BY-NC,2,Acute Myeloid Leukemia,IDH1|IDH2,C,D:\dev\pubmed_files\showcase_10\pdfs\30725494.pdf,565471
