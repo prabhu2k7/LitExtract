@@ -1160,22 +1160,31 @@ def biomarkers(limit: int = 200) -> dict[str, Any]:
                 applications.add(str(r.get("br_application") or "").strip())
                 if str(r.get("significance_call") or "").strip().lower() == "significant":
                     sig_count += 1
-                result_rows.append({k: r.get(k) for k in (
+                row = {k: r.get(k) for k in (
                     "pubmed_id", "outcome_name", "statistical_test",
                     "value_type", "r_value", "r_ci_lower", "r_ci_upper",
                     "p_value_prefix", "p_value", "significance_call",
                     "br_application", "specimen", "methodology_technique",
-                )})
+                )}
+                # Coerce pubmed_id to str — pandas can infer numeric for
+                # all-digit PMIDs after concat. Frontend uses it as a Map
+                # key + .localeCompare, both of which crash on numbers.
+                if row.get("pubmed_id") is not None:
+                    row["pubmed_id"] = str(row["pubmed_id"])
+                result_rows.append(row)
 
         # Inferences scoped
         inference_rows: list[dict] = []
         if not inf.empty:
             isub = inf[inf["_canon"] == canon]
             for _, r in isub.iterrows():
-                inference_rows.append({k: r.get(k) for k in (
+                irow = {k: r.get(k) for k in (
                     "pubmed_id", "br_application", "evidence_statement",
                     "bm_outcome", "source_excerpt", "source_section",
-                )})
+                )}
+                if irow.get("pubmed_id") is not None:
+                    irow["pubmed_id"] = str(irow["pubmed_id"])
+                inference_rows.append(irow)
 
         diseases = sorted({(paper_disease.get(p) or "").strip() for p in paper_ids
                            if paper_disease.get(p)})
