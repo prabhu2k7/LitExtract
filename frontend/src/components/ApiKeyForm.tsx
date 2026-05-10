@@ -258,8 +258,8 @@ export default function ApiKeyForm({ onSaved, compact = false }: ApiKeyFormProps
               Stored only in your browser.
             </span>{" "}
             Sent as a request header (TLS-encrypted) on each upload. The
-            LitExtract server never persists your key — not in databases, files,
-            or logs. Anyone with access to your browser can read it.
+            server never persists your key — not in databases, files, or logs.
+            Anyone with access to your browser can read it.
             {!compact && (
               <>
                 <br />

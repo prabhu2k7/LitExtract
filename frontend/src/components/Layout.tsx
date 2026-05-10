@@ -58,10 +58,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <div>
             <div className="text-base font-semibold text-slate-900 leading-tight tracking-tight">
-              LitExtract
+              Biomarker Research
             </div>
             <div className="text-[11px] text-slate-500 leading-tight">
-              Biomarker Intelligence
+              Oncology Extraction
             </div>
           </div>
         </Link>

@@ -18,7 +18,7 @@ export default function ApiKeyModal({
   open,
   onClose,
   title = "OpenAI API key required",
-  subtitle = "LitExtract is open source — bring your own key. We never store it on our servers.",
+  subtitle = "Biomarker Research is open source — bring your own key. We never store it on our servers.",
   onSaved,
 }: ApiKeyModalProps) {
   // Body-scroll lock + Esc to close

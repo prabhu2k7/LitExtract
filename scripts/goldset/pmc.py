@@ -32,7 +32,7 @@ PMC_PDF_WEB = "https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
 # Be polite: NCBI rate-limits to 3 req/s without API key, 10 req/s with.
 NCBI_DELAY_S = 0.4
 
-USER_AGENT = "Mozilla/5.0 LitExtract-goldset/0.4 (open-source; honours NCBI rate limits)"
+USER_AGENT = "Mozilla/5.0 BiomarkerResearch-goldset/0.5 (open-source; honours NCBI rate limits)"
 
 
 @dataclass
@@ -58,8 +58,8 @@ def pmid_to_pmcid(pmids: list[str]) -> dict[str, Optional[str]]:
         params = {
             "ids": ",".join(chunk),
             "format": "json",
-            "tool": "litextract-goldset",
-            "email": "noreply@litextract.local",
+            "tool": "biomarker-research-goldset",
+            "email": "noreply@biomarker-research.local",
         }
         r = requests.get(NCBI_IDCONV, params=params, timeout=30,
                          headers={"User-Agent": USER_AGENT})

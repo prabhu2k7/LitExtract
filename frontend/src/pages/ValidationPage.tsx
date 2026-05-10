@@ -132,7 +132,7 @@ export default function ValidationPage() {
             </div>
             <div>
               <div className="text-sm font-semibold text-slate-900">
-                Try LitExtract on your own paper
+                Try Biomarker Research on your own paper
               </div>
               <div className="text-xs text-slate-600 mt-0.5">
                 Upload a PDF — results come back in under 90 seconds. Bring your own gold standard and we'll add it to this benchmark in 48 hours.

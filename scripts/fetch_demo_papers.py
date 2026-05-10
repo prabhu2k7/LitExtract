@@ -144,7 +144,7 @@ def main() -> int:
     print()
     print("=" * 70)
     print(f"DONE. {success}/{len(targets)} PDFs downloaded -> {pdfs_dir}")
-    print(f"      Folder ready for upload via the LitExtract UI.")
+    print(f"      Folder ready for upload via the Biomarker Research UI.")
     print("=" * 70)
     return 0 if success else 1
 

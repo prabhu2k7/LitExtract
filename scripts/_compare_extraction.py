@@ -1,4 +1,4 @@
-"""Side-by-side comparison: LitExtract output vs CIViC gold for one PMID."""
+"""Side-by-side comparison: extracted output vs CIViC gold for one PMID."""
 from __future__ import annotations
 import sys
 import json

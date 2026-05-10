@@ -1,4 +1,4 @@
-"""FastAPI backend for the LitExtract UI.
+"""FastAPI backend for the Biomarker Research UI.
 
 Routes:
   POST /api/upload          -> upload a PDF, kicks off background extraction, returns paper_id
@@ -61,7 +61,7 @@ _initdb.init_db()
 
 
 # ---- App ----
-app = FastAPI(title="LitExtract API", version="0.1.0")
+app = FastAPI(title="Biomarker Research API", version="0.1.0")
 
 # Security headers on every response (CSP, HSTS, frame-deny, etc.)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -1434,7 +1434,7 @@ else:
     @app.get("/")
     def index() -> JSONResponse:
         return JSONResponse({
-            "name": "LitExtract API (dev mode)",
+            "name": "Biomarker Research API (dev mode)",
             "version": "0.1.0",
             "note": "frontend/dist not built; run `npm run dev` in /frontend or use Docker build for production",
             "docs": "/docs",

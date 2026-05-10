@@ -191,7 +191,7 @@ def main() -> int:
         masked = f"{scheme}//{user}:****@{tail}"
 
     print("=" * 70)
-    print("LitExtract  ·  SQLite -> Neon Postgres migration")
+    print("Biomarker Research  ·  SQLite -> Neon Postgres migration")
     print("=" * 70)
     print(f"  source : {sqlite_url}")
     print(f"  target : {masked}")

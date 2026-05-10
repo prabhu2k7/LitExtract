@@ -38,7 +38,7 @@ export default function SettingsPage() {
           <PrivacyPoint
             icon={ShieldCheck}
             title="Sent only as a request header"
-            body="On each upload we send X-OpenAI-Api-Key over TLS. The LitExtract server never writes it to disk, database, or logs."
+            body="On each upload we send X-OpenAI-Api-Key over TLS. The server never writes it to disk, database, or logs."
           />
           <PrivacyPoint
             icon={BookOpen}

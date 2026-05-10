@@ -1,4 +1,4 @@
-"""Security primitives for the LitExtract API.
+"""Security primitives for the Biomarker Research API.
 
 This module is the single source of truth for:
   - BYOK header handling (`X-OpenAI-Api-Key`)

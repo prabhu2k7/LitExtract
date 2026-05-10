@@ -1,5 +1,5 @@
 ---
-title: LitExtract
+title: Biomarker Research
 emoji: 🧪
 colorFrom: blue
 colorTo: indigo
@@ -10,7 +10,11 @@ license: agpl-3.0
 short_description: Structured biomarker extraction from oncology PDFs
 ---
 
-# LitExtract — Biomarker Intelligence from Research PDFs
+# Biomarker Research — Oncology Extraction Platform
+
+> Engineering codename: **LitExtract**. The codename appears in the GitHub
+> URL, file paths, and commit history; the user-facing brand is **Biomarker
+> Research**.
 
 Open-source pipeline that turns oncology research papers into structured,
 auditable biomarker data. Drop a PDF, get back a 4-sheet workbook with

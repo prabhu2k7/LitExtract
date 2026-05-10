@@ -81,7 +81,7 @@ def fetch_civic_tsv(cache_dir: Path) -> Path:
     r = requests.get(
         CIVIC_NIGHTLY_TSV,
         timeout=120,
-        headers={"User-Agent": "Mozilla/5.0 LitExtract-goldset/0.4"},
+        headers={"User-Agent": "Mozilla/5.0 BiomarkerResearch-goldset/0.5"},
     )
     r.raise_for_status()
     target.write_bytes(r.content)

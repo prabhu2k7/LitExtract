@@ -32,7 +32,7 @@ export default function AboutPage() {
             <span className="text-accent-500">structured biomarker data</span>
           </h1>
           <p className="mt-3 text-brand-100 text-base md:text-lg max-w-3xl leading-relaxed">
-            LitExtract reads a PDF, classifies the study, and runs four specialized
+            Biomarker Research reads a PDF, classifies the study, and runs four specialized
             extraction agents to deliver a clean four-sheet workbook your research,
             regulatory, and analytics teams can use immediately.
           </p>
@@ -141,7 +141,7 @@ export default function AboutPage() {
 
       {/* Footer signature */}
       <div className="my-10 text-center text-xs text-slate-500">
-        LitExtract · Biomarker Intelligence · v0.1
+        Biomarker Research · v0.1
       </div>
     </div>
   );

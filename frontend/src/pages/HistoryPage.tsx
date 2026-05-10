@@ -19,7 +19,7 @@ export default function HistoryPage() {
           Extraction history
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          All papers processed by LitExtract on this workspace.
+          All papers processed in this workspace.
         </p>
       </div>
 
